@@ -3,14 +3,8 @@ __author__ = 'bjorn@haxx.se'
 import sys
 import math
 import cv2
-import io
 import numpy as np
 import argparse
-
-stream = io.BytesIO()
-
-CAMERA_WIDTH = 2592
-CAMERA_HEIGHT = 1944
 
 def line(p1, p2):
     A = (p1[1] - p2[1])
@@ -36,12 +30,9 @@ def create_hue_mask(image, lower_color, upper_color):
     # Create a mask from the colors
     mask = cv2.inRange(image, lower, upper)
     return mask
-    #output_image = cv2.bitwise_and(image, image, mask = mask)
-    #return output_image
 
 def findRed(img):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    # Get lower red hue
     lower_red_hue = create_hue_mask(hsv, [0, 100, 100], [10, 255, 255])
     higher_red_hue = create_hue_mask(hsv, [170, 100, 100], [179, 255, 255])
 
@@ -56,6 +47,10 @@ def findCircles(img):
 
     if circles is None:
         print "No circles found!"
+        if args.show_error:
+            cv2.imshow('error', image)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
         exit(1)
 
     center = None
@@ -74,6 +69,10 @@ def findCircles(img):
 
     if numcirc != 4:
         print "%d circles found but expected 4!" % numcirc
+        if args.show_error:
+            cv2.imshow('error', image)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
         exit(1)
 
     def getX(item):
@@ -96,9 +95,10 @@ def findAngle(img, redimg, center, width):
     maxlen = 0
     if lines is None:
         print "No lines found"
-        cv2.imshow('edges',edges)
-        cv2.waitKey()
-        cv2.destroyAllWindows()
+        if args.show_error:
+            cv2.imshow('error',edges)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
         exit(2)
     else:
         pl = None
@@ -116,16 +116,16 @@ def findAngle(img, redimg, center, width):
                 if r and r[0] > 0 and r[1] > 0:
                     dist = math.sqrt( (r[0] - center[0])**2 + (r[1] - center[1])**2 )
                     #print "intersection %d,%d at distance %d" % ( r[0], r[1], dist)
-                    #cv2.circle(rgb,(r[0],r[1]),2,(0,0,255),3)
                     if dist > maxlen and dist < width/2:
                         tip = r
                         maxlen = dist
 
     if tip is None:
         print "No tip found!"
-        cv2.imshow('img',img)
-        cv2.waitKey()
-        cv2.destroyAllWindows()
+        if args.show_error:
+            cv2.imshow('error',img)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
         exit(2)
 
     #print "chosen intersection: %d,%d at distance %d" % ( tip[0], tip[1], maxlen)
@@ -155,20 +155,42 @@ def findAngle(img, redimg, center, width):
 
 ##########################################################3
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-s', '--show',
+                    action='store_true',
+                    help='Show processed image')
+parser.add_argument('-e', '--show-error',
+                    action='store_true',
+                    help='Show image in case of error')
+parser.add_argument('-c', '--camera',
+                    action='store_true',
+                    help='Read image from attached camera')
+parser.add_argument('file', nargs='?',
+                    help='Read image from this file')
+args = parser.parse_args()
 
-if False:
-    # Take a picture using picamera
-    with picamera.PiCamera() as camera:
-        camera.resolution = (CAMERA_WIDTH, CAMERA_HEIGHT)
-        camera.awb_mode = 'shade'
-        camera.start_preview()
-        time.sleep(5)
-        camera.capture(stream, format='jpeg')
-        data = np.fromstring(stream.getvalue(), dtype=np.uint8)
-        # import the picture into openCV
-        image = cv2.imdecode(data, 1)
+if args.camera:
+    # Take a picture using webcam
+    cam = cv2.VideoCapture(0)
+    ret, frame = cam.read()
+    cam.release()
+    if ret:
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+    else:
+        print "Failed to read webcam image!"
+        exit(0)
+elif args.file:
+    image = cv2.imread(args.file)
 else:
-    image = cv2.imread(sys.argv[1])
+    parser.print_help()
+    exit(0)
+
+height, width, channels = image.shape
+if width > 1500 or width < 600:
+    scale = 1000.0 / width
+    print "Image is %dx%d, resizing to %dx%d" % ( width, height, width * scale, height * scale)
+    scaled = cv2.resize(image, (0,0), fx=scale, fy=scale)
+    image = scaled
 
 red = findRed(image)
 fromleft = findCircles(red)
@@ -214,9 +236,9 @@ cv2.putText(image, string,
             (255,255,255), 5)
 
 
-if True:
+if args.show:
     cv2.imshow('image',image)
     cv2.waitKey()
     cv2.destroyAllWindows()
 
-print "%.2f" % liter
+print "%.2f liter" % liter
