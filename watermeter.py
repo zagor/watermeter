@@ -42,7 +42,18 @@ def findRed(img):
 
 def findCircles(img):
     ### find dials by circles
-    circles = cv2.HoughCircles(img, cv2.cv.CV_HOUGH_GRADIENT, 1, 50,
+    gradient = 0
+    if hasattr(cv2, 'HOUGH_GRADIENT'):
+        # OpenCV v3
+        gradient = cv2.HOUGH_GRADIENT
+    elif hasattr(cv2.cv, 'CV_HOUGH_GRADIENT'):
+        # OpenCV v2
+        gradient = cv2.cv.CV_HOUGH_GRADIENT
+    else:
+        print "Unsupported OpenCV version %s" % cv2.__version__
+        exit(1)
+
+    circles = cv2.HoughCircles(img, gradient, 1, 50,
                                param1=20,param2=15,minRadius=20,maxRadius=50)
 
     if circles is None:
@@ -88,7 +99,7 @@ def findAngle(img, redimg, center, width):
                             rho=1,
                             theta=np.pi/90,
                             threshold=15,
-                            minLineLength=width/3,
+                            minLineLength=width/4,
                             maxLineGap=50)
 
     tip = None
@@ -96,29 +107,33 @@ def findAngle(img, redimg, center, width):
     if lines is None:
         print "No lines found"
         if args.show_error:
-            cv2.imshow('error',edges)
+            cv2.imshow('error',img)
             cv2.waitKey()
             cv2.destroyAllWindows()
         exit(2)
     else:
         pl = None
-        #print "%d lines" % len(lines[0])
-        for x1,y1,x2,y2 in lines[0]:
-            cv2.line(img,(x1,y1),(x2,y2),(0,255,0),2)
-            #print "line: %d,%d %d,%d" % (x1, y1, x2, y2)
+        #print "%d lines" % len(lines)
+        for x in range(0, len(lines)):
+            for x1,y1,x2,y2 in lines[x]:
+                l = line([x1,y1], [x2,y2]);
+                cv2.line(img,(x1,y1),(x2,y2),(0,255,0),2)
+                #print "line: %d,%d %d,%d" % (x1, y1, x2, y2)
 
-            l = line([x1,y1], [x2,y2]);
-            for x1,y1,x2,y2 in lines[0]:
-                l2 = line([x1,y1], [x2,y2]);
-                if l2 is l:
-                    continue
-                r = intersection(l, l2)
-                if r and r[0] > 0 and r[1] > 0:
-                    dist = math.sqrt( (r[0] - center[0])**2 + (r[1] - center[1])**2 )
-                    #print "intersection %d,%d at distance %d" % ( r[0], r[1], dist)
-                    if dist > maxlen and dist < width/2:
-                        tip = r
-                        maxlen = dist
+                # see if it intersects any other line
+                for y in range(0, len(lines)):
+                    for xx1,yy1,xx2,yy2 in lines[y]:
+                        l2 = line([xx1,yy1], [xx2,yy2]);
+                        if l2 is l:
+                            continue
+                        r = intersection(l, l2)
+                        if r and r[0] > 0 and r[1] > 0:
+                            dist = math.sqrt( (r[0] - center[0])**2 + (r[1] - center[1])**2 )
+                            #print "intersection %d,%d at distance %d" % ( r[0], r[1], dist)
+                            #cv2.circle(img,(r[0],r[1]),2,(0,0,255),2)
+                            if dist > maxlen and dist < width/2:
+                                tip = r
+                                maxlen = dist
 
     if tip is None:
         print "No tip found!"
